@@ -19,6 +19,7 @@ namespace SimplePaint
     {
         enum ToolType { Line, Rectangle, Circle }  // 사용할 도형 타입
         private Bitmap canvasBitmap;          // 실제 그림이 저장되는 비트맵
+        private Bitmap originalBitmap;        // 원본 이미지 저장
         private Graphics canvasGraphics;      // 비트맵위에 그리기 위한 객체
         private bool isDrawing= false;       // 현재 드래그중인지 여부
         private Point startPoint;             // 드래그 시작점
@@ -32,11 +33,18 @@ namespace SimplePaint
         {
             InitializeComponent();
 
+            // PictureBox 설정
+            picCanvas.SizeMode = PictureBoxSizeMode.AutoSize;
+            picCanvas.AutoSize = true;
+
             canvasBitmap = new Bitmap(picCanvas.Width, picCanvas.Height); 
             canvasGraphics = Graphics.FromImage(canvasBitmap); 
             canvasGraphics.Clear(Color.White);   // 캔버스를 흰색으로 초기화
 
             picCanvas.Image = canvasBitmap;   // 그린 그림을 화면(PictureBox)에표시
+
+            // Form 설정 (스크롤바 활성화)
+            this.AutoScroll = true;
 
             // 마우스이벤트연결
             picCanvas.MouseDown+= PicCanvas_MouseDown;
@@ -61,11 +69,11 @@ namespace SimplePaint
             trbLineWidth.Value= 2;
             trbLineWidth.ValueChanged+= trbLineWidth_ValueChanged;
 
-            // 저장 버튼 이벤트 연결
-            btnSaveFile.Click += btnSaveFile_Click;
-
             // 열기 버튼 이벤트 연결
             btnOpenFile.Click += btnOpenFile_Click;
+            
+            // 저장 버튼 이벤트 연결
+            btnSaveFile.Click += btnSaveFile_Click;
 
             // 마우스 휠 이벤트 (확대/축소)
             picCanvas.MouseWheel += PicCanvas_MouseWheel;
@@ -194,30 +202,33 @@ namespace SimplePaint
                 {
                     try
                     {
-                        Bitmap loadedBitmap = new Bitmap(openDialog.FileName);
-                        
                         // 기존 비트맵 해제
                         if (canvasBitmap != null) canvasBitmap.Dispose();
                         if (canvasGraphics != null) canvasGraphics.Dispose();
+                        if (originalBitmap != null) originalBitmap.Dispose();
                         
-                        // 새 비트맵 설정
-                        canvasBitmap = new Bitmap(loadedBitmap);
-                        canvasGraphics = Graphics.FromImage(canvasBitmap);
+                        // 원본 이미지 로드
+                        originalBitmap = new Bitmap(openDialog.FileName);
                         
-                        // PictureBox 크기 설정
-                        picCanvas.Width = canvasBitmap.Width;
-                        picCanvas.Height = canvasBitmap.Height;
-                        picCanvas.Image = canvasBitmap;
-                        
-                        // PictureBox의 부모 Panel이 있다면 AutoScroll 활성화
-                        Control parent = picCanvas.Parent;
-                        if (parent is Panel panel)
+                        // canvasBitmap을 원본과 같은 크기로 생성 (이 위에 그림 그리기)
+                        canvasBitmap = new Bitmap(originalBitmap.Width, originalBitmap.Height);
+                        using (Graphics g = Graphics.FromImage(canvasBitmap))
                         {
-                            panel.AutoScroll = true;
+                            g.DrawImage(originalBitmap, 0, 0);
                         }
                         
+                        canvasGraphics = Graphics.FromImage(canvasBitmap);
+                        
+                        // PictureBox 크기 초기화
+                        picCanvas.SizeMode = PictureBoxSizeMode.AutoSize;
+                        picCanvas.Image = canvasBitmap;
+                        picCanvas.AutoSize = true;
+                        
+                        // 스크롤 활성화
+                        this.AutoScroll = true;
+                        
                         zoomLevel = 1.0f;
-                        MessageBox.Show("이미지가 로드되었습니다.", "완료");
+                        MessageBox.Show($"이미지가 로드되었습니다. ({canvasBitmap.Width}x{canvasBitmap.Height})", "완료");
                     }
                     catch (Exception ex)
                     {
@@ -229,6 +240,8 @@ namespace SimplePaint
 
         private void PicCanvas_MouseWheel(object sender, MouseEventArgs e)
         {
+            if (canvasBitmap == null) return;
+
             // 마우스 휠 위로: 확대, 아래로: 축소
             float zoomFactor = 0.1f;
             if (e.Delta > 0) // 위로 스크롤
@@ -241,36 +254,52 @@ namespace SimplePaint
                     zoomLevel -= zoomFactor;
             }
             
-            // 이미지 크기 업데이트
             UpdateCanvasSize();
+            // 이벤트 처리 완료
+            ((HandledMouseEventArgs)e).Handled = true;
         }
 
         private void UpdateCanvasSize()
         {
-            if (canvasBitmap != null)
+            if (canvasBitmap == null) return;
+
+            int newWidth = (int)(canvasBitmap.Width * zoomLevel);
+            int newHeight = (int)(canvasBitmap.Height * zoomLevel);
+            
+            // PictureBox 크기 업데이트
+            picCanvas.AutoSize = false;  // 자동 크기 조정 비활성화
+            picCanvas.Width = newWidth;
+            picCanvas.Height = newHeight;
+            
+            // 확대/축소된 비트맵 생성 및 표시
+            Bitmap scaledBitmap = new Bitmap(newWidth, newHeight);
+            using (Graphics g = Graphics.FromImage(scaledBitmap))
             {
-                int newWidth = (int)(canvasBitmap.Width * zoomLevel);
-                int newHeight = (int)(canvasBitmap.Height * zoomLevel);
-                
-                picCanvas.Width = newWidth;
-                picCanvas.Height = newHeight;
-                
-                // 스케일링된 이미지 다시 그리기
-                Bitmap scaledBitmap = new Bitmap(newWidth, newHeight);
-                using (Graphics g = Graphics.FromImage(scaledBitmap))
-                {
-                    g.DrawImage(canvasBitmap, 0, 0, newWidth, newHeight);
-                }
-                
-                if (picCanvas.Image != null && picCanvas.Image != canvasBitmap)
-                    picCanvas.Image.Dispose();
-                    
-                picCanvas.Image = scaledBitmap;
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(canvasBitmap, 0, 0, newWidth, newHeight);
             }
+            
+            // 기존 Image 해제
+            if (picCanvas.Image != canvasBitmap && picCanvas.Image != null)
+            {
+                picCanvas.Image?.Dispose();
+            }
+            
+            picCanvas.Image = scaledBitmap;
+            
+            // Form이 자동으로 스크롤바 업데이트하도록
+            this.AutoScroll = true;
+            this.PerformLayout();
         }
 
         private void btnSaveFile_Click(object sender, EventArgs e)
         {
+            if (canvasBitmap == null)
+            {
+                MessageBox.Show("저장할 이미지가 없습니다.", "알림");
+                return;
+            }
+
             using (SaveFileDialog saveDialog = new SaveFileDialog())
             {
                 saveDialog.Filter = "PNG 이미지(*.png)|*.png|JPG 이미지(*.jpg)|*.jpg|BMP 이미지(*.bmp)|*.bmp";
