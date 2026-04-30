@@ -26,6 +26,7 @@ namespace SimplePaint
         private ToolType currentTool= ToolType.Line;  // 현재 선택된 도형
         private Color currentColor= Color.Black;      // 현재 색상
         private int currentLineWidth= 2;              // 현재 선 두께
+        private float zoomLevel = 1.0f;               // 확대/축소 레벨
 
         public Form1()
         {
@@ -62,6 +63,12 @@ namespace SimplePaint
 
             // 저장 버튼 이벤트 연결
             btnSaveFile.Click += btnSaveFile_Click;
+
+            // 열기 버튼 이벤트 연결
+            btnOpenFile.Click += btnOpenFile_Click;
+
+            // 마우스 휠 이벤트 (확대/축소)
+            picCanvas.MouseWheel += PicCanvas_MouseWheel;
         }
 
         private void PicCanvas_MouseDown(object sender, MouseEventArgs e)
@@ -174,6 +181,92 @@ namespace SimplePaint
         private void Form1_Load(object sender, EventArgs e)
         {
 
+        }
+
+        private void btnOpenFile_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog openDialog = new OpenFileDialog())
+            {
+                openDialog.Filter = "이미지 파일(*.png;*.jpg;*.bmp)|*.png;*.jpg;*.bmp|모든 파일(*.*)|*.*";
+                openDialog.Title = "이미지 열기";
+
+                if (openDialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        Bitmap loadedBitmap = new Bitmap(openDialog.FileName);
+                        
+                        // 기존 비트맵 해제
+                        if (canvasBitmap != null) canvasBitmap.Dispose();
+                        if (canvasGraphics != null) canvasGraphics.Dispose();
+                        
+                        // 새 비트맵 설정
+                        canvasBitmap = new Bitmap(loadedBitmap);
+                        canvasGraphics = Graphics.FromImage(canvasBitmap);
+                        
+                        // PictureBox 크기 설정
+                        picCanvas.Width = canvasBitmap.Width;
+                        picCanvas.Height = canvasBitmap.Height;
+                        picCanvas.Image = canvasBitmap;
+                        
+                        // PictureBox의 부모 Panel이 있다면 AutoScroll 활성화
+                        Control parent = picCanvas.Parent;
+                        if (parent is Panel panel)
+                        {
+                            panel.AutoScroll = true;
+                        }
+                        
+                        zoomLevel = 1.0f;
+                        MessageBox.Show("이미지가 로드되었습니다.", "완료");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"이미지 로드 중 오류: {ex.Message}", "오류");
+                    }
+                }
+            }
+        }
+
+        private void PicCanvas_MouseWheel(object sender, MouseEventArgs e)
+        {
+            // 마우스 휠 위로: 확대, 아래로: 축소
+            float zoomFactor = 0.1f;
+            if (e.Delta > 0) // 위로 스크롤
+            {
+                zoomLevel += zoomFactor;
+            }
+            else // 아래로 스크롤
+            {
+                if (zoomLevel > zoomFactor)
+                    zoomLevel -= zoomFactor;
+            }
+            
+            // 이미지 크기 업데이트
+            UpdateCanvasSize();
+        }
+
+        private void UpdateCanvasSize()
+        {
+            if (canvasBitmap != null)
+            {
+                int newWidth = (int)(canvasBitmap.Width * zoomLevel);
+                int newHeight = (int)(canvasBitmap.Height * zoomLevel);
+                
+                picCanvas.Width = newWidth;
+                picCanvas.Height = newHeight;
+                
+                // 스케일링된 이미지 다시 그리기
+                Bitmap scaledBitmap = new Bitmap(newWidth, newHeight);
+                using (Graphics g = Graphics.FromImage(scaledBitmap))
+                {
+                    g.DrawImage(canvasBitmap, 0, 0, newWidth, newHeight);
+                }
+                
+                if (picCanvas.Image != null && picCanvas.Image != canvasBitmap)
+                    picCanvas.Image.Dispose();
+                    
+                picCanvas.Image = scaledBitmap;
+            }
         }
 
         private void btnSaveFile_Click(object sender, EventArgs e)
