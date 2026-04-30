@@ -59,6 +59,9 @@ namespace SimplePaint
             trbLineWidth.Maximum= 10;   // 최대값
             trbLineWidth.Value= 2;
             trbLineWidth.ValueChanged+= trbLineWidth_ValueChanged;
+
+            // 저장 버튼 이벤트 연결
+            btnSaveFile.Click += btnSaveFile_Click;
         }
 
         private void PicCanvas_MouseDown(object sender, MouseEventArgs e)
@@ -171,6 +174,29 @@ namespace SimplePaint
         private void Form1_Load(object sender, EventArgs e)
         {
 
+        }
+
+        private void btnSaveFile_Click(object sender, EventArgs e)
+        {
+            using (SaveFileDialog saveDialog = new SaveFileDialog())
+            {
+                saveDialog.Filter = "PNG 이미지(*.png)|*.png|JPG 이미지(*.jpg)|*.jpg|BMP 이미지(*.bmp)|*.bmp";
+                saveDialog.Title = "그림 저장";
+
+                if (saveDialog.ShowDialog() == DialogResult.OK)
+                {
+                    string fileName = saveDialog.FileName;
+                    try
+                    {
+                        canvasBitmap.Save(fileName);
+                        MessageBox.Show("파일이 저장되었습니다.", "저장 완료");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"저장 중 오류가 발생했습니다: {ex.Message}", "오류");
+                    }
+                }
+            }
         }
     }
 }
